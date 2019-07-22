@@ -1,6 +1,6 @@
 import get from 'lodash.get'
 
-function selectionPlugin (callback) {
+function selectionPlugin () {
   const plugin = {}
   let overlay
   let overlayContext
@@ -185,3 +185,5 @@ function selectionPlugin (callback) {
 
   return plugin
 }
+
+export default selectionPlugin
