@@ -1,6 +1,7 @@
 import get from 'lodash.get'
 
-export default (callback) => {
+function selectionPlugin (callback) {
+  const plugin = {}
   let overlay
   let overlayContext
   let chartInstance
@@ -60,11 +61,21 @@ export default (callback) => {
     }
 
     clear()
+    let stale = false
     Object.values(cache).forEach(({ index, datasetIndex, color, key }) => {
-      chartInstance.data.datasets[datasetIndex].backgroundColor[index] = color
+      const prevColor = chartInstance.data.datasets[datasetIndex].backgroundColor[index]
+      if (prevColor !== color) {
+        chartInstance.data.datasets[datasetIndex].backgroundColor[index] = color
+        stale = true
+      }
     })
-    chartInstance.update()
-    callback(evt, { leadingEdge, trailingEdge })
+    if (stale) chartInstance.update()
+
+    if (
+      plugin.onMouseUp && typeof plugin.onMouseUp === 'function'
+    ) {
+      plugin.onMouseUp(evt, { leadingEdge, trailingEdge })
+    }
   }
 
   function drawOverlay (evt) {
@@ -143,33 +154,32 @@ export default (callback) => {
     }
   }
 
-  const plugin = {
-    afterInit: (chart, options) => {
-      chartInstance = chart
-      parentElement = chart.canvas.parentElement
-      overlay = document.createElement('canvas')
-      overlay.style.background = 'transparent'
-      overlay.style.position = 'absolute'
-      overlay.style.cursor = 'crosshair'
-      overlay.style.zIndex = 2
-      overlay.style.opacity = 0.2
-      overlay.style.pointerEvents = 'none'
-      overlay.style.top = 0
-      overlay.style.left = 0
-      overlay.style.width = `${chart.canvas.offsetWidth}px`
-      overlay.style.height = `${chart.canvas.offsetHeight}px`
-      overlay.width = chart.canvas.offsetWidth
-      overlay.height = chart.canvas.offsetHeight
-      parentElement.appendChild(overlay)
-      chart.canvas.onmousedown = onMouseDown
-      chart.canvas.onmouseup = onMouseUp
-      chart.canvas.onmousemove = onMouseMove
-      overlayContext = overlay.getContext('2d')
-    },
-    destroy: (chart, options) => {
-      if (parentElement) {
-        parentElement.removeChild(overlay)
-      }
+  plugin.afterInit = (chart, options) => {
+    chartInstance = chart
+    parentElement = chart.canvas.parentElement
+    overlay = document.createElement('canvas')
+    overlay.style.background = 'transparent'
+    overlay.style.position = 'absolute'
+    overlay.style.cursor = 'crosshair'
+    overlay.style.zIndex = 2
+    overlay.style.opacity = 0.2
+    overlay.style.pointerEvents = 'none'
+    overlay.style.top = 0
+    overlay.style.left = 0
+    overlay.style.width = `${chart.canvas.offsetWidth}px`
+    overlay.style.height = `${chart.canvas.offsetHeight}px`
+    overlay.width = chart.canvas.offsetWidth
+    overlay.height = chart.canvas.offsetHeight
+    parentElement.appendChild(overlay)
+    chart.canvas.onmousedown = onMouseDown
+    chart.canvas.onmouseup = onMouseUp
+    chart.canvas.onmousemove = onMouseMove
+    overlayContext = overlay.getContext('2d')
+  }
+
+  plugin.destroy = (chart, options) => {
+    if (parentElement) {
+      parentElement.removeChild(overlay)
     }
   }
 
