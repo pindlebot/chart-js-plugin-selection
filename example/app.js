@@ -7,7 +7,9 @@ function onClick (evt, data) {
   console.log({ evt, data })
 }
 
-const plugin = createPlugin(onClick)
+const plugin = createPlugin()
+
+plugin.onMouseUp = onClick
 
 const genColors = (len, color) => {
   return new Array(len).fill(color)

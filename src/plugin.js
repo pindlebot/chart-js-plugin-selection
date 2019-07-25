@@ -9,11 +9,10 @@ function selectionPlugin () {
 
   let state = {
     position: [],
-    trailingEdge: null,
+    startIndex: -1,
     width: 0
   }
 
-  const cache = {}
   const setState = (nextState) => {
     state = {
       ...state,
@@ -27,62 +26,64 @@ function selectionPlugin () {
     overlayContext.clearRect(0, 0, overlay.width, overlay.height)
   }
 
-  const getLeadingEdge = (evt) => {
+  const getChartElementIndex = (evt) => {
     const elems = chartInstance.getElementsAtXAxis(evt)
     if (!elems.length) {
       return -1
     }
-    const label = get(elems, [0, '_view', 'label'], null)
     const index = get(elems, [0, '_index'], null)
     return index
   }
 
   const onMouseDown = (evt) => {
     clear()
-    const index = getLeadingEdge(evt)
+    const index = getChartElementIndex(evt)
     if (index < 0) return
     const rect = overlay.getBoundingClientRect()
     const { clientX, clientY } = evt
     const x = clientX - rect.left
     const y = clientY - rect.top
-    setState({ position: [x, y], trailingEdge: { index } })
+    setState({ position: [x, y], startIndex: index })
   }
 
   const onMouseUp = (evt) => {
-    const { trailingEdge } = getState()
-    if (!trailingEdge) return
-    const leadingEdge = getLeadingEdge(evt)
+    const { startIndex } = getState()
+
+    if (startIndex < 0) {
+      return
+    }
+  
+    const endIndex = getChartElementIndex(evt)
+
     setState({
-      trailingEdge: null
+      startIndex: -1
     })
 
-    if (leadingEdge === trailingEdge) {
+    if (endIndex === startIndex) {
       return
     }
 
     clear()
-    let stale = false
-    Object.values(cache).forEach(({ index, datasetIndex, color, key }) => {
-      const prevColor = chartInstance.data.datasets[datasetIndex].backgroundColor[index]
-      if (prevColor !== color) {
-        chartInstance.data.datasets[datasetIndex].backgroundColor[index] = color
-        stale = true
-      }
-    })
-    if (stale) chartInstance.update()
-
     if (
       plugin.onMouseUp && typeof plugin.onMouseUp === 'function'
     ) {
-      plugin.onMouseUp(evt, { leadingEdge, trailingEdge })
+      const left = startIndex < endIndex ? startIndex : endIndex
+      const right = startIndex < endIndex ? endIndex : startIndex
+      const labels = chartInstance.data.labels
+      plugin.onMouseUp(evt, {
+        startIndex: left,
+        endIndex: right,
+        startLabel: labels[left],
+        endLabel: labels[right]
+      })
     }
   }
 
   function drawOverlay (evt) {
     clear()
     const { clientX } = evt
-    const state = getState()
-    const [x] = state.position
+    const { position } = getState()
+    const [x, y] = position
     const rect = overlay.getBoundingClientRect()
     const width = Math.floor(clientX - rect.left - x)
     const chartArea = chartInstance.chartArea
@@ -94,63 +95,10 @@ function selectionPlugin () {
     )
   }
 
-  function getElements (evt) {
-    return chartInstance.getElementsAtXAxis(evt)
-      .map(elem => ({
-        key: `${elem._datasetIndex}-${elem._index}`,
-        index: elem._index,
-        datasetIndex: elem._datasetIndex,
-        color: elem._model.backgroundColor
-      }))
-  }
-
-  function setCache (elem) {
-    if (cache[elem.key]) {
-      return
-    }
-    cache[elem.key] = elem
-  }
-
-  function modifyColorInPlace (datasetIndex, trailingEdge, leadingEdge) {
-    return function (color, index) {
-      const key = `${datasetIndex}-${index}`
-      const elem = cache[key]
-      const isBackward = trailingEdge.index > leadingEdge.index
-
-      if (
-        index >= (isBackward ? leadingEdge.index : trailingEdge.index) &&
-        index <= (isBackward ? trailingEdge.index : leadingEdge.index)
-      ) {
-        this[index] = '#7CF261'
-        return
-      }
-
-      if (elem) {
-        this[index] = elem.color
-      }
-    }
-  }
-
   const onMouseMove = (evt) => {
-    const { clientX } = evt
-    const { trailingEdge } = getState()
-    if (trailingEdge) {
+    const { startIndex } = getState()
+    if (startIndex > -1) {
       drawOverlay(evt)
-      const elems = getElements(evt)
-
-      elems.forEach(setCache)
-
-      if (elems.length) {
-        const leadingEdge = { index: elems[0].index }
-        chartInstance.data.datasets.forEach((dataset, index) => {
-          dataset.backgroundColor.forEach(
-            modifyColorInPlace(index, trailingEdge, leadingEdge),
-            dataset.backgroundColor
-          )
-        })
-      }
-
-      chartInstance.update()
     }
   }
 
@@ -172,8 +120,8 @@ function selectionPlugin () {
     overlay.height = chart.canvas.offsetHeight
     parentElement.appendChild(overlay)
     chart.canvas.onmousedown = onMouseDown
-    chart.canvas.onmouseup = onMouseUp
     chart.canvas.onmousemove = onMouseMove
+    window.addEventListener('mouseup', onMouseUp)
     overlayContext = overlay.getContext('2d')
   }
 
@@ -181,6 +129,7 @@ function selectionPlugin () {
     if (parentElement) {
       parentElement.removeChild(overlay)
     }
+    window.removeEventListener('mouseup', onMouseUp)
   }
 
   return plugin
